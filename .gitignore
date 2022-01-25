@@ -169,3 +169,4 @@ cython_debug/
 .h5
 .parquet
 data/
+.vscode/
