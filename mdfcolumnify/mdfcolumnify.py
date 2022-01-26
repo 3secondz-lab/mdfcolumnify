@@ -8,6 +8,14 @@ import pandas as pd
 from asammdf import MDF, Signal
 
 logger = logging.getLogger("mdfcolumnify")
+formatter = logging.Formatter(
+    fmt="{asctime} - {name:10s} [{levelname:^7s}] {message}",
+    style="{",
+    datefmt="%m/%d/%Y %H:%M:%S",
+)
+console = logging.StreamHandler()
+console.setFormatter(formatter)
+logger.addHandler(console)
 
 
 class MdfColumnify(object):
@@ -60,15 +68,17 @@ class MdfColumnify(object):
             input_files = [src]
         elif os.path.isdir(src):
             input_files = sorted(glob.glob(src + "/*." + fmt))
-            logger.info(f"Concatenating {len(input_files)} Log Files in {src}")
+            logger.info(f"Concatenating {len(input_files)} Log Files in {src}:")
             logger.info(f"{input_files}")
         else:
             logger.error(f"{src} is not a valid file")
 
         if fmt == "bz2":
-            for file in input_files:
-                mdf = MDF.concatenate(mdf, MDF(bz2.BZ2File(file, "rb")))
-
+            try:
+                for file in input_files:
+                    mdf = MDF.concatenate(mdf, MDF(bz2.BZ2File(file, "rb")))
+            except Exception as e:
+                logger.error(f"{src} is not valid MDF format: {e}")
         else:
             mdf = MDF.concatenate(input_files)
         return mdf
@@ -80,8 +90,7 @@ class MdfColumnify(object):
         for channel in channel_iterator:
             if len(channel.timestamps):
                 channel_list.append(channel.name)
-        logger.info(f"{len(channel_list)} Valid channels in files")
-        logger.info(f"{channel_list}")
+        logger.info(f"{len(channel_list)} Valid channels in files:\n{channel_list}")
         return self.filter(channel_list)
 
     def extract_bus(self, dbc_list=None):
@@ -108,20 +117,25 @@ class MdfColumnify(object):
         elif self.dbc_list:
             filtered = self.extract_bus()
         else:
-            if dst == "parquet":
-                logger.error(
-                    f"Raw message cannot be stored in parquet format.\n"
-                    + "specify dbc file or choose other destination format."
-                )
-                return False
-            else:
-                filtered = self.filter_invalid_channels()
+            filtered = self.filter_invalid_channels()
 
         if not filtered.info()["groups"]:
-            logger.warning(f"Empty data, nothing to export {filtered.info()}")
+            logger.warning(f"Empty data, nothing to export:\n {filtered.info()}")
             return False
 
-        filtered.export(dst, output)
+        if dst == "parquet" and not self.dbc_list:
+            logger.warning(
+                f"Converting Raw message to parquet will add additional dependency:\n[ pandas, pyarrow ]"
+            )
+            filtered.to_dataframe().to_parquet(output)
+            import pyarrow.parquet as pq
+
+            _tmp = pq.read_table(output)
+            logger.warning(
+                f"First Row of Converted Pandas dataframe:\n{_tmp.to_pandas().iloc[0]}"
+            )
+        else:
+            filtered.export(dst, output)
         return True
 
 
@@ -148,10 +162,10 @@ if __name__ == "__main__":
     if args.verbose:
         logger.setLevel(logging.INFO)
 
-    assert not (
-        not args.dbc and args.dst == "parquet"
-    ), "Raw message cannot be stored in parquet format.\n \
-        Add --dbc option or choose other destination format."
+    # assert not (
+    #     not args.dbc and args.dst == "parquet"
+    # ), "Raw message cannot be stored in parquet format.\n \
+    #     Add --dbc option or choose other destination format."
 
     data = MdfColumnify(input=args.input, fmt=args.fmt, dbc_list=args.dbc)
     data.columnify(output=args.output, dst=args.dst)
