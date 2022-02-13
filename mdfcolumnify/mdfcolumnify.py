@@ -20,6 +20,8 @@ logger.addHandler(console)
 
 class MdfColumnify(object):
     _mdf = None
+    _abs_time = []
+
     def __init__(
         self,
         input: str | None = None,
@@ -82,6 +84,9 @@ class MdfColumnify(object):
             except Exception as e:
                 logger.error(f"{src} is not valid MDF format: {e}")
         else:
+            for file in input_files:
+                _tmp = MDF(file)
+                self._abs_time.append((file, _tmp.header.abs_time))
             mdf = MDF.concatenate(input_files)
         return mdf
 
@@ -118,7 +123,7 @@ class MdfColumnify(object):
         dst: str | None = None,
         dbc_list: list[str] | None = None,
         export: bool = False,
-        time_as_unix: bool = True
+        time_as_unix: bool = True,
     ):
         if dbc_list:
             self.dbc_list = dbc_list
