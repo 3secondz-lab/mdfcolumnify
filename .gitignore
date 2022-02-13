@@ -168,5 +168,6 @@ cython_debug/
 .csv
 .h5
 .parquet
+.pb
 data/
 .vscode/

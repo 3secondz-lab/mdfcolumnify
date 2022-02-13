@@ -19,6 +19,7 @@ logger.addHandler(console)
 
 
 class MdfColumnify(object):
+    _mdf = None
     def __init__(
         self,
         input: str | None = None,
@@ -68,6 +69,7 @@ class MdfColumnify(object):
             input_files = [src]
         elif os.path.isdir(src):
             input_files = sorted(glob.glob(src + "/*." + fmt))
+            input_files += sorted(glob.glob(src + "/*." + fmt.upper()))
             logger.info(f"Concatenating {len(input_files)} Log Files in {src}:")
             logger.info(f"{input_files}")
         else:
@@ -106,11 +108,18 @@ class MdfColumnify(object):
 
     def save_files(self, output, dst):
         try:
-            self.export(output, dst)
+            self.export(output, dst, time_as_date=True)
         except Exception as e:
             logger.error(f"Error occurs when saving files: {e}")
 
-    def columnify(self, output: str, dst: str = "csv", dbc_list: list[str] = None):
+    def columnify(
+        self,
+        output: str | None = None,
+        dst: str | None = None,
+        dbc_list: list[str] | None = None,
+        export: bool = False,
+        time_as_unix: bool = True
+    ):
         if dbc_list:
             self.dbc_list = dbc_list
             filtered = self.extract_bus()
@@ -122,21 +131,30 @@ class MdfColumnify(object):
         if not filtered.info()["groups"]:
             logger.warning(f"Empty data, nothing to export:\n {filtered.info()}")
             return False
+        # try:
+        #     filtered.index += self._mdf.header.start_time
+        # except Exception as e:
+        #     raise ValueError(f"Could not resolve start_time from {self._mdf.name}")
+        if export:
+            if not dst in ["csv", "hdf5", "parquet"]:
+                logger.error(f"Destination file {output} with unknown extension {dst}")
+                raise RuntimeError("Export format is not valid")
+            if dst == "parquet":
+                logger.warning(
+                    f"Converting Raw message to parquet will add additional dependency:\n[ pandas, pyarrow ]"
+                )
+                filtered.to_dataframe(use_interpolation=False).to_parquet(output)
+                import pyarrow.parquet as pq
 
-        if dst == "parquet" and not self.dbc_list:
-            logger.warning(
-                f"Converting Raw message to parquet will add additional dependency:\n[ pandas, pyarrow ]"
-            )
-            filtered.to_dataframe().to_parquet(output)
-            import pyarrow.parquet as pq
+                _tmp = pq.read_table(output)
+                logger.warning(
+                    f"First Row of Converted Pandas dataframe:\n{_tmp.to_pandas().iloc[0]}"
+                )
+                logger.warning(f"Rows without value will be filled with NaN")
 
-            _tmp = pq.read_table(output)
-            logger.warning(
-                f"First Row of Converted Pandas dataframe:\n{_tmp.to_pandas().iloc[0]}"
-            )
-        else:
             filtered.export(dst, output)
-        return True
+
+        return filtered
 
 
 if __name__ == "__main__":
@@ -168,4 +186,4 @@ if __name__ == "__main__":
     #     Add --dbc option or choose other destination format."
 
     data = MdfColumnify(input=args.input, fmt=args.fmt, dbc_list=args.dbc)
-    data.columnify(output=args.output, dst=args.dst)
+    data.columnify(output=args.output, dst=args.dst, export=True)
