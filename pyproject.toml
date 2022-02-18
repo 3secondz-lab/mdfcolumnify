@@ -7,9 +7,9 @@ authors = ["yoonjinh <yoonjinh@3secondz.com>"]
 [tool.poetry.dependencies]
 python = "^3.10"
 h5py = "^3.6.0"
-asammdf = "6.4.4"
 tables = "^3.7.0"
 pyarrow = "^6.0.1"
+asammdf = "6.4.4"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"

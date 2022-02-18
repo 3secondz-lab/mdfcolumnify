@@ -1,11 +1,9 @@
-import argparse
 import bz2
 import glob
 import logging
 import os
 
-import pandas as pd
-from asammdf import MDF, Signal
+from .util.mdfhandler import MDF
 
 logger = logging.getLogger("mdfcolumnify")
 formatter = logging.Formatter(
@@ -136,10 +134,6 @@ class MdfColumnify(object):
         if not filtered.info()["groups"]:
             logger.warning(f"Empty data, nothing to export:\n {filtered.info()}")
             return False
-        # try:
-        #     filtered.index += self._mdf.header.start_time
-        # except Exception as e:
-        #     raise ValueError(f"Could not resolve start_time from {self._mdf.name}")
         if export:
             if not dst in ["csv", "hdf5", "parquet"]:
                 logger.error(f"Destination file {output} with unknown extension {dst}")
@@ -148,47 +142,19 @@ class MdfColumnify(object):
                 logger.warning(
                     f"Converting Raw message to parquet will add additional dependency:\n[ pandas, pyarrow ]"
                 )
-                filtered.to_dataframe(use_interpolation=False).to_parquet(output)
+                filtered = MDF.to_dataframe(
+                    filtered, use_interpolation=False
+                ).to_parquet(output + ".parquet")
                 import pyarrow.parquet as pq
 
-                _tmp = pq.read_table(output)
+                _tmp = pq.read_table(output + ".parquet")
                 logger.warning(
                     f"First Row of Converted Pandas dataframe:\n{_tmp.to_pandas().iloc[0]}"
                 )
                 logger.warning(f"Rows without value will be filled with NaN")
 
-            filtered.export(dst, output)
-
+            else:
+                MDF.export(
+                    filtered, dst, output, time_as_date=True, time_as_unix=time_as_unix
+                )
         return filtered
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Deserialize .mf4 file into (.csv | .h5 | .parquet) formats"
-    )
-    parser.add_argument("input", help="path to MF4 source")
-    parser.add_argument("output", help="path to converted destination")
-    parser.add_argument("--dbc", help="path to dbc file for can frames", nargs="+")
-    parser.add_argument(
-        "--fmt", help="input source format", default="mf4", choices=["mf4", "bz2"]
-    )
-    parser.add_argument(
-        "--dst",
-        help="output format ['csv', 'hdf5', 'parquet']",
-        default="csv",
-        choices=["csv", "hdf5", "parquet"],
-    )
-    parser.add_argument("--verbose", action="store_true", default=False)
-
-    args = parser.parse_args()
-
-    if args.verbose:
-        logger.setLevel(logging.INFO)
-
-    # assert not (
-    #     not args.dbc and args.dst == "parquet"
-    # ), "Raw message cannot be stored in parquet format.\n \
-    #     Add --dbc option or choose other destination format."
-
-    data = MdfColumnify(input=args.input, fmt=args.fmt, dbc_list=args.dbc)
-    data.columnify(output=args.output, dst=args.dst, export=True)
